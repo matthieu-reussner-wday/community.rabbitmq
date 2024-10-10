@@ -62,6 +62,12 @@ options:
     type: str
     default: present
     choices: [present, absent]
+  policy_type:
+    description:
+      - The type of policy, either policy or operator_policy.
+    type: str
+    default: policy
+    choices: [policy, operator_policy]
 '''
 
 EXAMPLES = r'''
@@ -79,6 +85,16 @@ EXAMPLES = r'''
     pattern: .*
     tags:
       ha-mode: all
+
+  - name: Add an Operator Policy
+    community.rabbitmq.rabbitmq_policy:
+      name: Operator_policy
+      apply_to: queues
+      pattern: .*
+      policy_type: operator_policy
+      tags:
+        max-length:100000
+        overflow:reject-publish
 '''
 
 import json
@@ -100,6 +116,7 @@ class RabbitMqPolicy(object):
         self._priority = module.params['priority']
         self._node = module.params['node']
         self._rabbitmqctl = module.get_bin_path('rabbitmqctl', True)
+        self._policy_type = module.params['policy_type']
 
         self._version = self._rabbit_version()
 
@@ -139,11 +156,16 @@ class RabbitMqPolicy(object):
         return None
 
     def _list_policies(self):
+        command = {
+            "policy": "list_policies",
+            "operator_policy": "list_operator_policies"
+        }.get(self._policy_type)
+
         if self._version and self._version >= Version('3.7.9'):
             # Remove first header line from policies list for version > 3.7.9
-            return self._exec(['list_policies'], True)[1:]
+            return self._exec([command], True)[1:]
 
-        return self._exec(['list_policies'], True)
+        return self._exec([command], True)
 
     def has_modifications(self):
         if self._pattern is None or self._tags is None:
@@ -166,7 +188,7 @@ class RabbitMqPolicy(object):
             for policy in self._list_policies())
 
     def set(self):
-        args = ['set_policy']
+        args = ["set_%s" % self._policy_type ]
         args.append(self._name)
         args.append(self._pattern)
         args.append(json.dumps(self._tags))
@@ -178,7 +200,7 @@ class RabbitMqPolicy(object):
         return self._exec(args)
 
     def clear(self):
-        return self._exec(['clear_policy', self._name])
+        return self._exec(["clear_%s" % self._policy_type, self._name])
 
     def _policy_check(self,
                       policy,
@@ -226,6 +248,7 @@ def main():
         priority=dict(default='0'),
         node=dict(default='rabbit'),
         state=dict(default='present', choices=['present', 'absent']),
+        policy_type=dict(default='policy', choices=['policy_type', 'operator_policy']),
     )
 
     module = AnsibleModule(
