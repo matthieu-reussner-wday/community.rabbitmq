@@ -2,6 +2,7 @@
   - set_fact:
       vhost_name: /policytest
       ha_policy_name: HA
+      operator_policy_name: OP_POLICY
 
   - name: Add host
     rabbitmq_vhost:
@@ -90,3 +91,48 @@
     assert:
       that:
         - remove_policy is not changed
+
+  - name: Add an Operator Policy
+    rabbitmq_policy:
+      name: "{{ operator_policy_name }}"
+      apply_to: queues
+      pattern: ".*"
+      policy_type: "operator_policy"
+      tags:
+        max-length:100000
+        overflow:reject-publish
+      vhost: "{{ vhost_name }}"
+    register: add_operator_policy
+
+  - name: Check that the operator policy is added
+    assert:
+      that:
+        - add_operator_policy is changed
+        - add_operator_policy is success
+
+  - name: Remove the operator policy
+    rabbitmq_policy:
+      name: "{{ operator_policy_name }}"
+      state: absent
+      vhost: "{{ vhost_name }}"
+      policy_type: "operator_policy"
+    register: remove_operator_policy
+
+  - name: Check that the policy is removed
+    assert:
+      that:
+        - remove_operator_policy is changed
+        - remove_operator_policy is success
+
+  - name: Remove the HA Policy (idempotency)
+    rabbitmq_policy:
+      name: "{{ operator_policy_name }}"
+      state: absent
+      vhost: "{{ vhost_name }}"
+      policy_type: "operator_policy"
+    register: remove_operator_policy
+
+  - name: Check that the operator policy is removed (idempotency)
+    assert:
+      that:
+        - remove_operator_policy is not changed
